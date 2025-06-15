@@ -119,7 +119,7 @@ def load_and_process_data(file_path, test_size=0.2, valid_size=0.1, random_state
     return train_texts, train_labels, valid_texts, valid_labels, test_texts, test_labels
 
 # 创建数据加载器
-def create_data_loaders(train_dataset, valid_dataset, test_dataset, batch_size=64):
+def create_data_loaders(train_dataset, valid_dataset, test_dataset, batch_size=128):
     """创建数据加载器"""
     # 训练集需要打乱顺序
     train_loader = DataLoader(train_dataset,batch_size=batch_size,shuffle=True,collate_fn=collate_fn)
@@ -170,7 +170,7 @@ def train(model, train_loader, optimizer, criterion, device, epoch):
         text, labels, lengths = batch
         text = text.to(device)
         labels = labels.to(device)
-        lengths = lengths.to(device)
+        lengths = lengths
         
         optimizer.zero_grad()
         predictions = model(text, lengths)
@@ -209,7 +209,7 @@ def evaluate(model, iterator, criterion, device):
             text, labels, lengths = batch
             text = text.to(device)
             labels = labels.to(device)
-            lengths = lengths.to(device)
+            lengths = lengths
             
             predictions = model(text, lengths)
             
@@ -256,10 +256,10 @@ def main():
     train_dataset = TextDataset(train_texts, train_labels, tokenizer=chinese_tokenizer, max_len=512)
     
     print("创建验证集和测试集...")
-    valid_dataset = TextDataset(valid_texts, valid_labels, tokenizer=chinese_tokenizer,vocab=train_dataset.vocab,max_len=100)
-    test_dataset = TextDataset(test_texts, test_labels, tokenizer=chinese_tokenizer,vocab=train_dataset.vocab,max_len=100)
+    valid_dataset = TextDataset(valid_texts, valid_labels, tokenizer=chinese_tokenizer,vocab=train_dataset.vocab,max_len=512)
+    test_dataset = TextDataset(test_texts, test_labels, tokenizer=chinese_tokenizer,vocab=train_dataset.vocab,max_len=512)
     
-    train_loader, valid_loader, test_loader = create_data_loaders(train_dataset, valid_dataset, test_dataset, batch_size=64)
+    train_loader, valid_loader, test_loader = create_data_loaders(train_dataset, valid_dataset, test_dataset, batch_size=128)
     
     # 初始化模型
     print("初始化模型...")
@@ -283,6 +283,7 @@ def main():
     N_EPOCHS = 10
     best_valid_acc = float(0)
     
+    all_time = time.time()
     for epoch in range(N_EPOCHS):
         start_time = time.time()
         
@@ -290,10 +291,9 @@ def main():
         valid_loss, valid_acc = evaluate(model, valid_loader, criterion, device)
         
         epoch_mins, epoch_secs = divmod(time.time() - start_time, 60)
-        
         # 保存最佳模型
         if best_valid_acc < valid_acc:
-            best_valid_acc = valid_loss
+            best_valid_acc = valid_acc
             torch.save(model.state_dict(), f'best_rnn_classifier_{epoch}.pt')
             print(f'模型已保存!')
         
@@ -301,6 +301,8 @@ def main():
         print(f'\tTrain Loss: {train_loss:.3f} | Train Acc: {train_acc*100:.2f}%')
         print(f'\t Val. Loss: {valid_loss:.3f} |  Val. Acc: {valid_acc*100:.2f}%')
     
+
+    print(f"总耗时：{time.time() - all_time}")
     # 加载最佳模型并在测试集上评估
     # print("在测试集上评估...")
     # model.load_state_dict(torch.load('best_rnn_classifier.pt'))

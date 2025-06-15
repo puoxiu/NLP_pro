@@ -9,7 +9,7 @@ class RNNClassifier(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
         
         # RNN层（可以替换为LSTM或GRU以获得更好性能）
-        self.rnn = nn.RNN(
+        self.rnn = nn.GRU(
             embedding_dim,
             hidden_dim,
             num_layers=num_layers,
