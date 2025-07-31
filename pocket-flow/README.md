@@ -34,3 +34,10 @@
 > BatchNode入门
 * 探索batchnode功能
 
+### practice8
+> 异步工作流
+* 将practice7实现的翻译功能异步化--同时平行运行任务，速度提示5倍！
+
+
+
+
