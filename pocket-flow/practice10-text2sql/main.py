@@ -9,7 +9,10 @@ def main():
 
     shared = {
         'db_name':'xingoa',
-        'natural_query': natural_query
+        'natural_query': natural_query,
+        'debug_attempts': 0,
+        'max_debug_attempts': 3,
+        'final_result': None,
     }
 
     text_2_sql_flow.run(shared)
