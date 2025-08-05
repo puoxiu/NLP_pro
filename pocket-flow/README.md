@@ -38,6 +38,28 @@
 > 异步工作流
 * 将practice7实现的翻译功能异步化--同时平行运行任务，速度提示5倍！
 
+### practice9
+> 带记忆功能的聊天应用demo
+* 将记忆存储到列表中，可以用向量检索
 
+### practice10
+> Agent: 实现text2sql
+* 将自然语言转为sql语句，会将schema表结构也输入给LLM进行分析
+* 支持debug，万一执行错了呢--》重试不超过3次
+
+### practice11
+> Agent： 个人email处理助手
+* todo
+
+### practice12
+> 基于HITL实现的joke生成器
+* 用户参与功能的demo，用户不满意则重试生成
+
+### practice13
+> SSE-流式响应demo
+* 基于fastapi + vue前端实现流式聊天应用
+
+### practice14
+> 
 
 
