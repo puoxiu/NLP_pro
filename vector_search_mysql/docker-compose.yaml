@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  mysql9:
+    image: mysql:9.0
+    container_name: mysql9_vector
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: vector_db            # 自动创建的数据库
+      MYSQL_USER: vector_user              # 普通用户
+      MYSQL_PASSWORD: root123456          # 用户密码
+    ports:
+      - "3306:3306"  # 端口映射到本地
+    command: --default-authentication-plugin=mysql_native_password
+    # 挂载初始化脚本目录，将本地的init-scripts目录挂载到容器内的/docker-entrypoint-initdb.d/
+    volumes:
+      -./init-scripts:/docker-entrypoint-initdb.d/
+    networks:
+      - mysql-network
+
+networks:
+  mysql-network:
+    driver: bridge
