@@ -1,178 +1,134 @@
-import requests
+import os
 import numpy as np
-import mysql.connector
-from mysql.connector import Error
+import psycopg2
 from typing import List, Dict, Tuple
 from dotenv import load_dotenv
 from openai import OpenAI
-import os
 
 load_dotenv()
 
-
+# 获取向量
 def get_embedding(text: str):
     client = OpenAI(
-        api_key=os.getenv("DASHSCOPE_API_KEY"),  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
-        base_url=os.getenv("BASE_URL")  # 百炼服务的base_url
+        api_key=os.getenv("DASHSCOPE_API_KEY"),
+        base_url=os.getenv("BASE_URL")
     )
 
     completion = client.embeddings.create(
         model=os.getenv("MODEL"),
-        # model = "text-embedding-v4",
         input=text,
-        dimensions=1024, 
+        dimensions=1024,
         encoding_format="float"
     )
-
-    # print(completion.model_dump_json())
 
     return completion.data[0].embedding
 
 
-# 数据库配置
-DB_CONFIG = {
-    "host": "localhost",
-    "database": "vector_db",
-    "user": "root",
-    "password": "root123456",
-    "port": 3306
-}
+# 建立数据库连接
+def get_connection():
+    return psycopg2.connect(
+        host=os.getenv("PG_HOST"),
+        port=os.getenv("PG_PORT"),
+        user=os.getenv("PG_USER"),
+        password=os.getenv("PG_PASSWORD"),
+        dbname=os.getenv("PG_DATABASE")
+    )
 
 
-
-def insert_document(content: str, file_id: str, user_id: str) -> bool:
-    """插入文档内容、向量和元数据到数据库"""
+# 插入文档
+def insert_document(content: str, file_id: str, user_id: str = None) -> bool:
     try:
-        # 生成向量
         embedding = get_embedding(content)
-        
-        # 准备元数据
-        metadata = {
-            "file_id": file_id,
-            "user_id": user_id,
-            "content_length": len(content)
-        }
-        
-        conn = mysql.connector.connect(** DB_CONFIG)
-        cursor = conn.cursor()
-        
-        # 插入数据
-        query = """
-        INSERT INTO document_embeddings (content, embedding, metadata)
-        VALUES (%s, %s, %s)
-        """
-        cursor.execute(query, (content, embedding, str(metadata).replace("'", '"')))
+        # 转为 pgvector 字符串格式
+        embedding_str = f"[{', '.join(f'{float(x):.5f}' for x in embedding)}]"
+
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO vector_test (file_id, content, embedding)
+            VALUES (%s, %s, %s::vector)
+        """, (file_id, content, embedding_str))
         conn.commit()
-        print(f"文档插入成功，file_id: {file_id}")
+        cur.close()
+        conn.close()
+        print("✅ 插入成功")
         return True
-        
-    except Error as e:
-        print(f"数据库错误: {e}")
-        return False
     except Exception as e:
-        print(f"插入失败: {e}")
+        print("❌ 插入失败:", e)
         return False
-    finally:
-        if 'conn' in locals() and conn.is_connected():
-            cursor.close()
-            conn.close()
 
 
+
+# 搜索相似文档
 def search_by_file_id_and_query(
-    query: str, 
-    file_id: str, 
-    top_k: int = 5
+    query: str,
+    file_id: str,
+    top_k: int = 1
 ) -> List[Tuple[str, float, Dict]]:
-    """
-    根据file_id过滤文档，并按查询与文档的相似性返回结果
-    返回: [(内容, 相似度, 元数据), ...]
-    """
     try:
-        # 生成查询向量
-        query_embedding = get_embedding(query)
-        
-        conn = mysql.connector.connect(**DB_CONFIG)
-        cursor = conn.cursor(dictionary=True)
-        
-        # 执行检索：按file_id过滤并按余弦相似度排序
-        query_sql = """
-        SELECT 
-            content,
-            VECTOR_COSINE_SIMILARITY(embedding, %s) AS similarity,
-            metadata
-        FROM document_embeddings
-        WHERE metadata->>'$.file_id' = %s
-        ORDER BY similarity DESC
-        LIMIT %s
-        """
-        
-        cursor.execute(query_sql, (query_embedding.tolist(), file_id, top_k))
-        results = cursor.fetchall()
-        
-        # 处理结果，将metadata从字符串转换为字典
-        processed_results = []
-        for res in results:
-            metadata = eval(res['metadata'])  # 将JSON字符串转换为字典
-            processed_results.append((
-                res['content'],
-                res['similarity'],
-                metadata
-            ))
-        
-        return processed_results
-        
-    except Error as e:
-        print(f"数据库查询错误: {e}")
-        return []
-    except Exception as e:
-        print(f"检索失败: {e}")
-        return []
-    finally:
-        if 'conn' in locals() and conn.is_connected():
-            cursor.close()
-            conn.close()
+        embedding = get_embedding(query)
+        # 把 Python list 转为 PostgreSQL 向量格式字符串
+        embedding_str = f"[{', '.join(f'{float(x):.5f}' for x in embedding)}]"
 
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT content, embedding <#> %s AS distance
+            FROM vector_test
+            WHERE file_id = %s
+            ORDER BY distance ASC
+            LIMIT %s
+        """, (embedding_str, file_id, top_k))
+
+        results = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        return [(content, 1 - distance, {}) for content, distance in results]  # 余弦相似度 = 1 - 距离
+    except Exception as e:
+        print("❌ 查询失败:", e)
+        return []
+
+
+# if __name__ == "__main__":
+#     print("== 文档向量测试 ==")
+#     mode = input("选择模式：插入文档(i) 或 搜索文档(s)? ")
+
+#     if mode == 'i':
+#         file_id = input("输入 file_id：")
+#         content = input("输入内容：")
+#         insert_document(content, file_id)
+#     elif mode == 's':
+#         file_id = input("输入 file_id：")
+#         query = input("输入搜索内容：")
+#         results = search_by_file_id_and_query(query, file_id)
+#         print("== 检索结果 ==")
+#         for i, (content, score, _) in enumerate(results, 1):
+#             print(f"[{i}] 相似度: {score:.4f}, 内容: {content}")
+#     else:
+#         print("无效输入，请输入 'i' 或 's'")
 
 
 if __name__ == "__main__":
-    text = input("请输入要转为向量的测试文本：")
+    print("== 自动测试向量插入与检索 ==")
+    
+    file_id = "test_file_001"
+    docs = [
+        "人工智能是计算机科学的一个分支，旨在创造能够执行通常需要人类智能的任务的系统。",
+        "天气不错，适合出去散步。",
+        "深度学习是机器学习的一种方法，特别适合处理图像和自然语言。"
+    ]
+    
+    print("🚀 开始插入测试文档")
+    for doc in docs:
+        insert_document(doc, file_id)
 
-    embedding = get_embedding(text)
-    dimension = len(embedding)
-    print(f"嵌入维度为：{dimension}")   # 1024
+    print("\n🔍 执行检索：")
+    query = "人工智能和深度学习的区别是什么？"
+    results = search_by_file_id_and_query(query, file_id, top_k=3)
     
-    
-    # 插入file_id为"doc_001"的文档
-    # insert_document(
-    #     content="Python是一种广泛使用的高级编程语言，由Guido van Rossum于1989年圣诞节期间设计",
-    #     file_id="doc_001",
-    #     user_id="user_123"
-    # )
-    
-    # insert_document(
-    #     content="Python的设计哲学强调代码的可读性和简洁性，采用缩进来定义代码块",
-    #     file_id="doc_001",
-    #     user_id="user_123"
-    # )
-    
-    # # 插入file_id为"doc_002"的文档
-    # insert_document(
-    #     content="MySQL是一个关系型数据库管理系统，由瑞典MySQL AB公司开发",
-    #     file_id="doc_002",
-    #     user_id="user_123"
-    # )
-    
-    # # 3. 检索示例：查询与"Python特点"相关的内容，限定file_id为"doc_001"
-    # search_results = search_by_file_id_and_query(
-    #     query="Python有什么特点？",
-    #     file_id="doc_001",
-    #     top_k=2
-    # )
-    
-    # # 4. 打印检索结果
-    # print("\n检索结果:")
-    # for i, (content, similarity, metadata) in enumerate(search_results, 1):
-    #     print(f"\n结果 {i} (相似度: {similarity:.4f}):")
-    #     print(f"内容: {content}")
-    #     print(f"文件ID: {metadata['file_id']}")
+    print("== 检索结果 ==")
+    for i, (content, score, _) in enumerate(results, 1):
+        print(f"[{i}] 相似度: {score:.4f}\n内容: {content}\n")
+
 

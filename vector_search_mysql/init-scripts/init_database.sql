@@ -1,18 +1,23 @@
-USE vector_db;
+-- 安装 pgvector 插件
+CREATE EXTENSION IF NOT EXISTS vector;
 
-CREATE TABLE IF NOT EXISTS document_embeddings (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    content TEXT NOT NULL,
-    embedding VECTOR(1024) NOT NULL,  -- 向量维度
-    metadata JSON NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- 创建表结构
+CREATE TABLE documents (
+  id SERIAL PRIMARY KEY,
+  file_id TEXT NOT NULL,
+  content TEXT,
+  embedding VECTOR(3)
 );
 
-CREATE INDEX IF NOT EXISTS idx_file_id ON document_embeddings((metadata->>'$.file_id'));
+-- 插入示例数据
+-- INSERT INTO documents (file_id, content, embedding) VALUES
+-- ('file1', '这是第一个文档', '[0.1, 0.2, 0.3]'),
+-- ('file1', '这是第二个文档', '[0.2, 0.1, 0.4]'),
+-- ('file2', '这是第三个文档', '[0.9, 0.1, 0.1]');
 
--- 创建向量索引（加速相似性搜索）
-CREATE INDEX IF NOT EXISTS idx_embedding ON document_embeddings(embedding)
-USING HNSW WITH (distance_function = 'COSINE');
-
-GRANT ALL PRIVILEGES ON vector_db.* TO 'vector_user'@'%';
-FLUSH PRIVILEGES;
+CREATE TABLE vector_test (
+  id SERIAL PRIMARY KEY,
+  file_id TEXT NOT NULL,
+  content TEXT,
+  embedding VECTOR(1024)
+);
